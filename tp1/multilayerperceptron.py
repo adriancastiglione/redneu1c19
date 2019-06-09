@@ -4,6 +4,8 @@ from math import exp
 import copy
 from collections import namedtuple
 
+layer_data = namedtuple("LayerData", "neurons_number activation_function")
+
 class MultilayerPerceptron:
 
 
@@ -20,7 +22,6 @@ class MultilayerPerceptron:
 		"identity": lambda h, v: 1
 	}
 
-	layer_data = namedtuple("LayerData", "neurons_number activation_function")
 
 	#hidden_layers is an iterable with the sizes of the hidden layers, where the i-th element is the size of
 	#the i-th hidden layer. The MLP will add input and output layers according to training data shape. 
@@ -29,6 +30,7 @@ class MultilayerPerceptron:
 		self.needs_training = True
 		self.hidden_layers = []
 		self.output_layer_activation = activation
+		self._weights_not_initialized = True
 
 		for x in hidden_layers:
 			layer = self._build_layer(x)
@@ -42,7 +44,7 @@ class MultilayerPerceptron:
 		if layer[NEURONS_NUMBER] <= 0:
 			raise ValueError("A layer must have at least one neuron")
 
-		return self.layer_data(layer[NEURONS_NUMBER], layer[ACTIVATION])
+		return layer_data(layer[NEURONS_NUMBER], layer[ACTIVATION])
 
 
 	def add_activation_function(self, name, function, derivative):
@@ -94,29 +96,35 @@ class MultilayerPerceptron:
 		return v
 		
 
-	def fit(self, patterns, answers, learning_rate = 0.2, epochs = 1000, momentum=0):
+	def fit(self, patterns, answers, learning_rate = 0.2, epochs = 1000, momentum=0, refitting = False, adaptative_learning_rate=None):
 	
+
+		a = 0
+		b = 0
+		dE = 0
+		previousE = 0
+
+		if adaptative_learning_rate is not None:
+			a = adaptative_learning_rate[0]
+			b = adaptative_learning_rate[1]
+
 		if len(patterns) == 0 or len(answers) == 0:
 			raise ValueError("Patterns nor answers can be zero")
 
 		if len(patterns) != len(answers):
 			raise ValueError("Not matching patterns and output lengths")
 
-		# pattern_shape = np.shape(patterns)
-		# answer_shape = np.shape(answers)
-		# input_dimention =  1 if len(pattern_shape) == 1 else pattern_shape[1]
-		# output_dimention = 1 if len(answer_shape) == 1 else answer_shape[1]
-
 		input_dimention = len(np.atleast_1d(patterns[0]))
 		output_dimention = len(np.atleast_1d(answers[0]))
 
-
-		self._initialize_weights(input_dimention, output_dimention)
+		if not refitting or self._weights_not_initialized:
+			self._initialize_weights(input_dimention, output_dimention)
 		
 		layers = self.hidden_layers + [self._build_layer((output_dimention, self.output_layer_activation))]
 		M = len(layers)
 
 		for epoch in range(0, epochs):
+
 			for u in range(0, len(patterns)):
 
 				current_pattern = patterns[u]
@@ -125,14 +133,23 @@ class MultilayerPerceptron:
 				delta = self.delta 
 				
 
-				dg = self.activation_functions_derivative[self.output_layer_activation]
+				dg = np.vectorize(self.activation_functions_derivative[self.output_layer_activation])
 
 				current_model_output = self._predict(current_pattern)
-				delta[M] = dg(self.net_inputs_cache[M], self.outputs_cache[M][1:])*(expected_output - current_model_output)
+				output_difference = expected_output - current_model_output
+				delta[M] = dg(self.net_inputs_cache[M], self.outputs_cache[M][1:])*output_difference
 				
+				E = np.dot(output_difference, output_difference) / 2
+				dE = E - previousE 
+				if dE < 0:
+					learning_rate += a 
+				elif dE > 0:
+					learning_rate -= b*learning_rate
+
+				previousE = E
 
 				for m in range(M, 1, -1):
-					dg = self.activation_functions_derivative[layers[m-1].activation_function]
+					dg = np.vectorize(self.activation_functions_derivative[layers[m-1].activation_function])
 					delta[m-1] = dg(self.net_inputs_cache[m-1], self.outputs_cache[m-1][1:])*np.matmul(np.transpose(self.W[m][:, 1:]), delta[m])
 
 				for m in range(1, M + 1):
@@ -142,7 +159,7 @@ class MultilayerPerceptron:
 					self.W[m] += dW_current + momentum * self.dW[m]
 					self.dW[m] = dW_current
 
-				self.needs_training = False
+		self.needs_training = False
 
 
 	def _initialize_weights(self, input_dimention, output_dimention):
@@ -159,6 +176,8 @@ class MultilayerPerceptron:
 			dw_k = np.zeros((current_layer_dimention, previous_layer_dimention + 1))
 			self.W.append(w_k)
 			self.dW.append(dw_k)
+
+		self._weights_not_initialized = False
 
 
 

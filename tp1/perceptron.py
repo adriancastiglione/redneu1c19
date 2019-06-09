@@ -34,14 +34,12 @@ class Perceptron:
 
 			outputs[Oi] = self._g(sum - self._pesos[0][Oi]) 
 
-		return outputs
+		return np.atleast_1d(outputs)
 
 
-	def fit(self, X, Y, epocas = 1000, eta = 0.1):
+	def fit(self, X, Y, epochs = 1000, eta = 0.1):
 
-		X = np.reshape(X, (len(X), self._entradas))
-
-		for e in range(0, epocas):
+		for e in range(0, epochs):
 			for i in range(0, len(X)):
 				for j in range(0, self._salidas):
 					Oj = self._calcularSalidaPara(X[i])
@@ -50,8 +48,13 @@ class Perceptron:
 					self._pesos[0, j] += update * -1
 
 
-	def predict(self, x):
-		return self._calcularSalidaPara(x)
+	def predict(self, X):
+		output = []
+		for x in X:
+			current_prediction = self._calcularSalidaPara(np.atleast_1d(x))
+			y =  current_prediction if current_prediction.size > 1 else current_prediction[0]
+			output.append(y)
+		return np.array(output).astype(int)
 
 
 if __name__ == "__main__":
